@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Bedrokia.Protocol/Bedrokia.Protocol.csproj" />
+    <Project Path="src/Bedrokia.Proxy/Bedrokia.Proxy.csproj" />
+    <Project Path="src/Bedrokia.Transport.NetherNet/Bedrokia.Transport.NetherNet.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Bedrokia.Proxy.Tests/Bedrokia.Proxy.Tests.csproj" />
+  </Folder>
+</Solution>

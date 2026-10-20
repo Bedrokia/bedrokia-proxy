@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: write # release job: create the GitHub release and its tag
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet test BedrokiaProxy.slnx -c Release
+
+  version:
+    # Every push to main is a release: last tag + 1 patch, or the <Version> of Directory.Build.props when it
+    # was raised by hand. A pushed tag v1.2.3 is used as is.
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: v
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            last=$(git tag --list 'v*' --sort=-v:refname | head -1); last="${last#v}"
+            base=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props)
+            if [ -z "$last" ]; then
+              version="$base"
+            else
+              IFS=. read -r major minor patch <<< "$last"
+              version="$major.$minor.$((patch + 1))"
+              if [ "$(printf '%s\n%s\n' "$base" "$version" | sort -V | tail -1)" = "$base" ] && [ "$base" != "$last" ]; then version="$base"; fi
+            fi
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Version: $version"
+
+  publish:
+    needs: [test, version]
+    strategy:
+      matrix:
+        rid: [linux-x64, win-x64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+      - run: dotnet publish src/Bedrokia.Proxy -c Release -r ${{ matrix.rid }} --self-contained -p:PublishSingleFile=true -p:Version=${{ needs.version.outputs.version }} -o out
+      - run: rm -f out/*.pdb # single file: bedrokia-proxy (Linux) or bedrokia-proxy.exe (Windows)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bedrokia-proxy-${{ matrix.rid }}
+          path: out
+
+  release:
+    if: github.event_name == 'push'
+    needs: [publish, version]
+    runs-on: ubuntu-latest
+    env:
+      TAG: v${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: Bedrokia Proxy ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          make_latest: true
+          files: |
+            artifacts/bedrokia-proxy
+            artifacts/bedrokia-proxy.exe
+            deploy/pterodactyl/egg-bedrokia-proxy.json
