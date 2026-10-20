@@ -27,15 +27,17 @@ Un Transfer vers une adresse inconnue est envoyé au client tel quel : il quitte
 
 Console du proxy : `list`, `send <joueur> <serveur>`, `stop`.
 
-Si un serveur s'arrête ou plante, ses joueurs sont renvoyés sur `default-server` au lieu d'être déconnectés.
+Si un serveur s'arrête ou plante, ses joueurs sont renvoyés sur le serveur `default` au lieu d'être déconnectés.
 
 ## Configuration (`proxy.properties`)
+
+Xbox Live est **toujours vérifié** par le proxy, ce n'est pas une option. Ça bloque les comptes crack, le vol de
+pseudo et le contournement de ban en changeant de nom.
 
 | Clé | Défaut | Rôle |
 |---|---|---|
 | `server-port` | `19132` | Port où les joueurs se connectent (TCP + UDP) |
 | `public-ip` | vide | IP annoncée aux joueurs (vide : trouvée par STUN dans Docker/Pterodactyl) |
-| `xbox-auth` | `on` | Vérifie les joueurs avec Xbox Live. **À laisser sur `on`.** |
 | `webrtc-ports` | `auto` | `auto` = tout le monde sur le port UDP de `server-port`, ou une plage `25600-25630` |
 
 ## Les serveurs (`servers.properties`)

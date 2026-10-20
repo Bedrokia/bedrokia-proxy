@@ -23,7 +23,8 @@ public sealed class ProxyServer(ProxyConfig config)
 
     public ProxyConfig Config { get; } = config;
 
-    public AuthKeys.Snapshot? AuthKeys => Config.OnlineMode ? _authKeys.Current : null;
+    /// <summary>Null until loaded: nobody can join before (Xbox Live is mandatory, against cracked accounts and stolen names).</summary>
+    public AuthKeys.Snapshot? AuthKeys => _authKeys.Current;
 
     public IEnumerable<PlayerSession> Players => _players.Keys;
 
@@ -34,7 +35,7 @@ public sealed class ProxyServer(ProxyConfig config)
         var range = Config.WebRtcRange();
         using var listener = new NetherNetListener(new IPEndPoint(IPAddress.Any, Config.Port),
             LoadOrCreateKey(Path.Combine("data", "nethernet-identity.pem")),
-            VerifyToken, allowAnonymous: !Config.OnlineMode,
+            VerifyToken, allowAnonymous: false,
             range is { } r ? new SIPSorcery.Sys.PortRange(r.First, Math.Max(r.First + 1, r.Last)) : null,
             sharedUdpPort: Config.SharesWebRtcPort ? Config.Port : null)
         {
@@ -52,10 +53,7 @@ public sealed class ProxyServer(ProxyConfig config)
             };
         };
         var signaling = listener.RunAsync(stop);
-        if (Config.OnlineMode)
-            _ = RefreshAuthKeysAsync(stop);
-        else
-            Log("xbox-auth is off: player identities are NOT verified. Anyone can join under any name.");
+        _ = RefreshAuthKeysAsync(stop);
         Log($"Listening on port {Config.Port}: TCP (join) + UDP. Type 'help' for commands.");
         await signaling;
         foreach (var player in Players)
@@ -65,9 +63,7 @@ public sealed class ProxyServer(ProxyConfig config)
 
     private ECDsa VerifyToken(string token)
     {
-        var keys = AuthKeys;
-        if (Config.OnlineMode && keys is null)
-            throw new LoginException("The server cannot reach Xbox Live right now. Try again in a minute.");
+        var keys = AuthKeys ?? throw new LoginException("The server cannot reach Xbox Live right now. Try again in a minute.");
         return LoginRequest.VerifyMultiplayerToken(token, keys, DateTimeOffset.UtcNow).ClientKey;
     }
 

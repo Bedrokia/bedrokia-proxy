@@ -7,7 +7,7 @@
     "exported_at": "2026-10-20T00:00:00+00:00",
     "name": "Bedrokia Proxy",
     "author": "nexiumpvp2@users.noreply.github.com",
-    "description": "Bedrokia Proxy: players join it and play on the Bedrokia servers behind it, switching server without reconnecting (like WaterdogPE). Players join through NetherNet (WebRTC) on the main port (TCP + UDP). The servers behind it are listed in servers.properties (file manager), reloaded as soon as it is saved.",
+    "description": "Bedrokia Proxy: players join it and play on the Bedrokia servers behind it, switching server without reconnecting (like WaterdogPE). Xbox Live is always checked by the proxy. Players join through NetherNet (WebRTC) on the main port (TCP + UDP). The servers behind it are listed in servers.properties (file manager), reloaded as soon as it is saved.",
     "features": null,
     "docker_images": {
         "Debian": "ghcr.io/parkervcp/yolks:debian"
@@ -15,14 +15,14 @@
     "file_denylist": [],
     "startup": "cp -f ./bedrokia-proxy ./.bedrokia-proxy-run && chmod +x ./.bedrokia-proxy-run && exec ./.bedrokia-proxy-run",
     "config": {
-        "files": "{\r\n    \"proxy.properties\": {\r\n        \"parser\": \"properties\",\r\n        \"find\": {\r\n            \"server-port\": \"{{server.build.default.port}}\",\r\n            \"xbox-auth\": \"{{server.build.env.XBOX_AUTH}}\",\r\n            \"webrtc-ports\": \"{{server.build.env.WEBRTC_PORTS}}\",\r\n            \"public-ip\": \"{{server.build.default.ip}}\"\r\n        }\r\n    }\r\n}",
+        "files": "{\r\n    \"proxy.properties\": {\r\n        \"parser\": \"properties\",\r\n        \"find\": {\r\n            \"server-port\": \"{{server.build.default.port}}\",\r\n            \"webrtc-ports\": \"{{server.build.env.WEBRTC_PORTS}}\",\r\n            \"public-ip\": \"{{server.build.default.ip}}\"\r\n        }\r\n    }\r\n}",
         "startup": "{\r\n    \"done\": \"Listening on port\"\r\n}",
         "logs": "{}",
         "stop": "stop"
     },
     "scripts": {
         "installation": {
-            "script": "#!/bin/bash\r\n# Bedrokia Proxy install script: downloads the Linux proxy from the GitHub releases.\r\n# The repository is private: the API needs a token (GITHUB_TOKEN) to download a release asset.\r\ncommand -v curl >/dev/null || { apt update && apt install -y curl ca-certificates; }\r\n\r\nmkdir -p /mnt/server\r\ncd /mnt/server\r\n\r\nREPO=\"Nexiumpvp2/bedrokia-proxy\"\r\nAUTH=()\r\n[ -n \"${GITHUB_TOKEN}\" ] && AUTH=(-H \"Authorization: Bearer ${GITHUB_TOKEN}\")\r\nif [ -z \"${VERSION}\" ] || [ \"${VERSION}\" == \"latest\" ]; then\r\n    RELEASE=\"https://api.github.com/repos/${REPO}/releases/latest\"\r\nelse\r\n    RELEASE=\"https://api.github.com/repos/${REPO}/releases/tags/${VERSION}\"\r\nfi\r\n\r\necho \"Looking for the release: ${RELEASE}\"\r\nJSON=$(curl -fsSL \"${AUTH[@]}\" \"${RELEASE}\") || { echo \"Release not found: check GITHUB_TOKEN (private repository) and VERSION\"; exit 1; }\r\n# Asset JSON: \"url\", \"id\", \"node_id\", \"name\"... (no object between url and name).\r\nASSET=$(echo \"${JSON}\" | tr -d '\\n' | grep -o '\"url\": *\"[^\"]*/releases/assets/[0-9]*\"[^}]*\"name\": *\"bedrokia-proxy\"' | grep -o 'https://[^\"]*/releases/assets/[0-9]*' | head -1)\r\n[ -n \"${ASSET}\" ] || { echo \"The release has no bedrokia-proxy file\"; exit 1; }\r\n\r\necho \"Downloading ${ASSET}\"\r\ncurl -fsSL \"${AUTH[@]}\" -H \"Accept: application/octet-stream\" -o bedrokia-proxy \"${ASSET}\" || { echo \"Download failed\"; exit 1; }\r\nchmod +x bedrokia-proxy\r\n\r\n# The panel fills these keys at each start; the proxy adds the other ones with comments.\r\nif [ ! -f proxy.properties ]; then\r\n    printf 'server-port=%s\\nxbox-auth=%s\\nwebrtc-ports=%s\\n' \"${SERVER_PORT}\" \"${XBOX_AUTH}\" \"${WEBRTC_PORTS}\" > proxy.properties\r\nfi\r\necho \"Bedrokia Proxy installed. Put your servers in servers.properties (created at the first start).\"",
+            "script": "#!/bin/bash\r\n# Bedrokia Proxy install script: downloads the Linux proxy from the GitHub releases.\r\n# The repository is private: the API needs a token (GITHUB_TOKEN) to download a release asset.\r\ncommand -v curl >/dev/null || { apt update && apt install -y curl ca-certificates; }\r\n\r\nmkdir -p /mnt/server\r\ncd /mnt/server\r\n\r\nREPO=\"Nexiumpvp2/bedrokia-proxy\"\r\nAUTH=()\r\n[ -n \"${GITHUB_TOKEN}\" ] && AUTH=(-H \"Authorization: Bearer ${GITHUB_TOKEN}\")\r\nif [ -z \"${VERSION}\" ] || [ \"${VERSION}\" == \"latest\" ]; then\r\n    RELEASE=\"https://api.github.com/repos/${REPO}/releases/latest\"\r\nelse\r\n    RELEASE=\"https://api.github.com/repos/${REPO}/releases/tags/${VERSION}\"\r\nfi\r\n\r\necho \"Looking for the release: ${RELEASE}\"\r\nJSON=$(curl -fsSL \"${AUTH[@]}\" \"${RELEASE}\") || { echo \"Release not found: check GITHUB_TOKEN (private repository) and VERSION\"; exit 1; }\r\n# Asset JSON: \"url\", \"id\", \"node_id\", \"name\"... (no object between url and name).\r\nASSET=$(echo \"${JSON}\" | tr -d '\\n' | grep -o '\"url\": *\"[^\"]*/releases/assets/[0-9]*\"[^}]*\"name\": *\"bedrokia-proxy\"' | grep -o 'https://[^\"]*/releases/assets/[0-9]*' | head -1)\r\n[ -n \"${ASSET}\" ] || { echo \"The release has no bedrokia-proxy file\"; exit 1; }\r\n\r\necho \"Downloading ${ASSET}\"\r\ncurl -fsSL \"${AUTH[@]}\" -H \"Accept: application/octet-stream\" -o bedrokia-proxy \"${ASSET}\" || { echo \"Download failed\"; exit 1; }\r\nchmod +x bedrokia-proxy\r\n\r\n# The panel fills these keys at each start; the proxy adds the other ones with comments.\r\nif [ ! -f proxy.properties ]; then\r\n    printf 'server-port=%s\\nwebrtc-ports=%s\\n' \"${SERVER_PORT}\" \"${WEBRTC_PORTS}\" > proxy.properties\r\nfi\r\necho \"Bedrokia Proxy installed. Put your servers in servers.properties (created at the first start).\"",
             "container": "ghcr.io/parkervcp/installers:debian",
             "entrypoint": "bash"
         }
@@ -46,16 +46,6 @@
             "user_viewable": false,
             "user_editable": false,
             "rules": "nullable|string|max:255",
-            "field_type": "text"
-        },
-        {
-            "name": "Xbox Live authentication",
-            "description": "on: players are verified with Xbox Live by the proxy (keep it on: the servers behind run with xbox-auth=off and trust the proxy).",
-            "env_variable": "XBOX_AUTH",
-            "default_value": "on",
-            "user_viewable": true,
-            "user_editable": true,
-            "rules": "required|in:on,off",
             "field_type": "text"
         },
         {

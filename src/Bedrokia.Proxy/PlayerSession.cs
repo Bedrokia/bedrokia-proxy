@@ -226,15 +226,14 @@ public sealed class PlayerSession
         }
 
         reader.Int32BE(); // protocol, already checked
-        var keys = _proxy.AuthKeys;
-        if (_proxy.Config.OnlineMode && keys is null)
-            throw new LoginException("The server cannot reach Xbox Live right now. Try again in a minute.");
+        // Xbox Live is mandatory: no cracked account, no stolen name, no ban bypass with another name.
+        var keys = _proxy.AuthKeys ?? throw new LoginException("The server cannot reach Xbox Live right now. Try again in a minute.");
         var identity = LoginRequest.Verify(reader.ByteArray(), keys, DateTimeOffset.UtcNow);
         // NetherNet has no game-layer encryption: the login must match the key the WebRTC identity proved.
         if (_client.PeerPublicKey is { } peerKey
             && !peerKey.ExportSubjectPublicKeyInfo().AsSpan().SequenceEqual(identity.ClientKey.ExportSubjectPublicKeyInfo()))
             throw new LoginException("Login does not match the connection identity.");
-        if (_client.PeerPublicKey is null && _proxy.Config.OnlineMode)
+        if (_client.PeerPublicKey is null)
             throw new LoginException("An Xbox Live identity is required to join this server.");
 
         Name = identity.Name;

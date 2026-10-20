@@ -16,7 +16,6 @@ public sealed class ProxyConfig
 {
     public int Port { get; private set; } = 19132;
     public string PublicIp { get; private set; } = "";
-    public bool OnlineMode { get; private set; } = true;
     public string WebRtcPorts { get; private set; } = "auto";
 
     private readonly Lock _serversLock = new();
@@ -29,7 +28,6 @@ public sealed class ProxyConfig
     [
         ("server-port", "19132", "Port players join on (TCP signaling; UDP on the same number with webrtc-ports=auto)"),
         ("public-ip", "", "Address announced to players (empty: found with STUN in Docker/Pterodactyl)"),
-        ("xbox-auth", "on", "on: players are verified with Xbox Live (keep it on: the servers behind trust the proxy)"),
         ("webrtc-ports", "auto", "auto = every player on the UDP port of server-port, or first-last = one port per player"),
     ];
 
@@ -89,7 +87,6 @@ public sealed class ProxyConfig
         var config = new ProxyConfig
         {
             PublicIp = values["public-ip"],
-            OnlineMode = values["xbox-auth"] is not ("off" or "false"),
             WebRtcPorts = values["webrtc-ports"],
         };
         if (!int.TryParse(values["server-port"], out var port) || port is < 1 or > 65535)

@@ -44,7 +44,7 @@ public class ProxyTests
             Assert.Equal("survie", config.FindTransferTarget("play.example.com", 19134)?.Name); // public address, same port
             Assert.Null(config.FindTransferTarget("other.example.com", 19132));
             Assert.Equal("lobby", config.DefaultServer.Name);
-            Assert.Contains("xbox-auth=on", File.ReadAllText(path)); // missing keys are written with their default
+            Assert.Contains("webrtc-ports=auto", File.ReadAllText(path)); // missing keys are written with their default
 
             // Edited while the proxy runs: used at once; a broken file keeps the previous list.
             var servers = Path.Combine(dir, "servers.properties");
