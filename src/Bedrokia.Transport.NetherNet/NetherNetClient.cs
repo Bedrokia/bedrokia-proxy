@@ -49,9 +49,13 @@ public static class NetherNetClient
             };
             var offer = peer.createOffer();
             await peer.setLocalDescription(offer);
-            // Host candidates are enough between servers; do not wait long for the rest.
-            await Task.WhenAny(gathered.Task, Task.Delay(2000, cancellationToken));
+            // Host candidates are enough between servers: they are usually in the offer already (no wait).
             var sdp = peer.localDescription?.sdp?.ToString() ?? offer.sdp;
+            if (!sdp.Contains("a=candidate:", StringComparison.Ordinal))
+            {
+                await Task.WhenAny(gathered.Task, Task.Delay(2000, cancellationToken));
+                sdp = peer.localDescription?.sdp?.ToString() ?? offer.sdp;
+            }
 
             var networkId = BitConverter.ToUInt64(RandomNumberGenerator.GetBytes(8));
             using var content = new StringContent(sdp, Encoding.UTF8);
