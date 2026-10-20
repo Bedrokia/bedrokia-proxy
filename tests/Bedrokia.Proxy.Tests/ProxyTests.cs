@@ -33,19 +33,32 @@ public class ProxyTests
     [Fact]
     public void FindsTransferTargets()
     {
-        var path = Path.GetTempFileName();
+        var dir = Directory.CreateTempSubdirectory().FullName;
         try
         {
+            var path = Path.Combine(dir, "proxy.properties");
+            // The old "servers" key is moved to servers.properties.
             File.WriteAllText(path, "servers=lobby=127.0.0.1:19133, survie=127.0.0.1:19134\ndefault-server=lobby\n");
             var config = ProxyConfig.Load(path);
             Assert.Equal("survie", config.FindTransferTarget("SURVIE", 0)?.Name);
             Assert.Equal("survie", config.FindTransferTarget("play.example.com", 19134)?.Name); // public address, same port
             Assert.Null(config.FindTransferTarget("other.example.com", 19132));
+            Assert.Equal("lobby", config.DefaultServer.Name);
             Assert.Contains("xbox-auth=on", File.ReadAllText(path)); // missing keys are written with their default
+
+            // Edited while the proxy runs: used at once; a broken file keeps the previous list.
+            var servers = Path.Combine(dir, "servers.properties");
+            File.WriteAllText(servers, "default=faction\nlobby=10.0.0.1:19135\nfaction=10.0.0.1:19136\n");
+            File.SetLastWriteTimeUtc(servers, DateTime.UtcNow.AddSeconds(5));
+            Assert.Equal("faction", config.DefaultServer.Name);
+            Assert.Equal(19136, config.Find("faction")?.Port);
+            File.WriteAllText(servers, "lobby=no-port\n");
+            File.SetLastWriteTimeUtc(servers, DateTime.UtcNow.AddSeconds(10));
+            Assert.Equal(2, config.Servers.Count);
         }
         finally
         {
-            File.Delete(path);
+            Directory.Delete(dir, recursive: true);
         }
     }
 }

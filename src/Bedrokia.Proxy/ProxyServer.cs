@@ -56,7 +56,6 @@ public sealed class ProxyServer(ProxyConfig config)
             _ = RefreshAuthKeysAsync(stop);
         else
             Log("xbox-auth is off: player identities are NOT verified. Anyone can join under any name.");
-        Log($"Servers: {string.Join(", ", Config.Servers.Select(s => $"{s.Name} ({s.Host}:{s.Port})"))}; default: {Config.DefaultServer.Name}.");
         Log($"Listening on port {Config.Port}: TCP (join) + UDP. Type 'help' for commands.");
         await signaling;
         foreach (var player in Players)

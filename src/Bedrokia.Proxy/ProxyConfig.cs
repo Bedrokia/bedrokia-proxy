@@ -8,15 +8,22 @@ namespace Bedrokia.Proxy;
 /// <summary>A Bedrokia server behind the proxy.</summary>
 public sealed record BackendServer(string Name, string Host, int Port);
 
-/// <summary>proxy.properties: key=value lines, '#' comments. Missing keys are added with their default.</summary>
+/// <summary>
+/// proxy.properties (network settings) and servers.properties (the servers behind the proxy, reloaded by itself
+/// when the file changes): key=value lines, '#' comments. Missing keys are added with their default.
+/// </summary>
 public sealed class ProxyConfig
 {
     public int Port { get; private set; } = 19132;
     public string PublicIp { get; private set; } = "";
     public bool OnlineMode { get; private set; } = true;
     public string WebRtcPorts { get; private set; } = "auto";
-    public List<BackendServer> Servers { get; } = [];
-    public BackendServer DefaultServer { get; private set; } = null!;
+
+    private readonly Lock _serversLock = new();
+    private string _serversPath = "";
+    private DateTime _serversStamp;
+    private IReadOnlyList<BackendServer> _servers = [];
+    private BackendServer _defaultServer = null!;
 
     private static readonly (string Key, string Default, string Comment)[] Keys =
     [
@@ -24,21 +31,49 @@ public sealed class ProxyConfig
         ("public-ip", "", "Address announced to players (empty: found with STUN in Docker/Pterodactyl)"),
         ("xbox-auth", "on", "on: players are verified with Xbox Live (keep it on: the servers behind trust the proxy)"),
         ("webrtc-ports", "auto", "auto = every player on the UDP port of server-port, or first-last = one port per player"),
-        ("servers", "lobby=127.0.0.1:19133", "Servers behind the proxy: name=host:port, separated by commas"),
-        ("default-server", "lobby", "Server players join first"),
     ];
 
-    /// <exception cref="InvalidDataException">A value is invalid.</exception>
-    public static ProxyConfig Load(string path)
+    public IReadOnlyList<BackendServer> Servers
     {
-        var values = new Dictionary<string, string>();
-        var lines = File.Exists(path) ? File.ReadAllLines(path).ToList() : [];
+        get
+        {
+            lock (_serversLock)
+            {
+                ReloadServersIfChanged();
+                return _servers;
+            }
+        }
+    }
+
+    public BackendServer DefaultServer
+    {
+        get
+        {
+            lock (_serversLock)
+            {
+                ReloadServersIfChanged();
+                return _defaultServer;
+            }
+        }
+    }
+
+    private static Dictionary<string, string> ReadProperties(IEnumerable<string> lines)
+    {
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         foreach (var line in lines)
         {
             var eq = line.IndexOf('=');
             if (eq > 0 && !line.TrimStart().StartsWith('#'))
                 values[line[..eq].Trim()] = line[(eq + 1)..].Trim();
         }
+        return values;
+    }
+
+    /// <exception cref="InvalidDataException">A value is invalid.</exception>
+    public static ProxyConfig Load(string path)
+    {
+        var lines = File.Exists(path) ? File.ReadAllLines(path).ToList() : [];
+        var values = ReadProperties(lines);
         var missing = Keys.Where(k => !values.ContainsKey(k.Key)).ToList();
         if (missing.Count > 0)
         {
@@ -60,21 +95,63 @@ public sealed class ProxyConfig
         if (!int.TryParse(values["server-port"], out var port) || port is < 1 or > 65535)
             throw new InvalidDataException($"{path}: server-port must be a port number.");
         config.Port = port;
-        foreach (var entry in values["servers"].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            var parts = entry.Split('=', 2);
-            var colon = parts.Length == 2 ? parts[1].LastIndexOf(':') : -1;
-            if (colon <= 0 || !int.TryParse(parts[1][(colon + 1)..], out var p) || p is < 1 or > 65535 || parts[0].Trim().Length == 0)
-                throw new InvalidDataException($"{path}: servers: '{entry}' must look like name=host:port.");
-            config.Servers.Add(new BackendServer(parts[0].Trim(), parts[1][..colon].Trim(), p));
-        }
-        if (config.Servers.Count == 0)
-            throw new InvalidDataException($"{path}: servers is empty.");
-        config.DefaultServer = config.Find(values["default-server"])
-            ?? throw new InvalidDataException($"{path}: default-server '{values["default-server"]}' is not in servers.");
         if (config.WebRtcRange() is null && !config.SharesWebRtcPort)
             throw new InvalidDataException($"{path}: webrtc-ports must be auto or look like 19140-19160.");
+
+        config._serversPath = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(path))!, "servers.properties");
+        if (!File.Exists(config._serversPath))
+        {
+            // Older proxy.properties kept the list in "servers" (name=host:port, comma separated): moved over.
+            var old = values.GetValueOrDefault("servers", "lobby=127.0.0.1:19133")
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            File.WriteAllLines(config._serversPath,
+            [
+                "# Servers behind the proxy, one per line: name=ip:port (the ip:port of the server in the panel).",
+                "# Players and plugins use the names (Transfer(\"survie\", 0), Lobby menu). Saved changes apply at once.",
+                "# In Pterodactyl, 127.0.0.1 is the proxy's own container: use the node IP (or 172.18.0.1).",
+                "",
+                "# Server players join first",
+                $"default={values.GetValueOrDefault("default-server", old.FirstOrDefault()?.Split('=')[0] ?? "lobby")}",
+                "",
+                .. old,
+            ]);
+        }
+        config.ReloadServersIfChanged(throwOnError: true);
         return config;
+    }
+
+    // Called under _serversLock (or before the config is shared). A broken file keeps the previous list.
+    private void ReloadServersIfChanged(bool throwOnError = false)
+    {
+        var stamp = File.Exists(_serversPath) ? File.GetLastWriteTimeUtc(_serversPath) : default;
+        if (stamp == _serversStamp)
+            return;
+        _serversStamp = stamp;
+        try
+        {
+            var values = ReadProperties(File.ReadAllLines(_serversPath));
+            var servers = new List<BackendServer>();
+            foreach (var (name, address) in values.Where(v => !v.Key.Equals("default", StringComparison.OrdinalIgnoreCase)))
+            {
+                var colon = address.LastIndexOf(':');
+                if (colon <= 0 || !int.TryParse(address[(colon + 1)..], out var p) || p is < 1 or > 65535)
+                    throw new InvalidDataException($"{_serversPath}: '{name}={address}' must look like name=ip:port.");
+                servers.Add(new BackendServer(name, address[..colon].Trim(), p));
+            }
+            if (servers.Count == 0)
+                throw new InvalidDataException($"{_serversPath}: no server (add lines like lobby=ip:port).");
+            var defaultName = values.GetValueOrDefault("default", servers[0].Name);
+            var defaultServer = servers.FirstOrDefault(s => s.Name.Equals(defaultName, StringComparison.OrdinalIgnoreCase))
+                ?? throw new InvalidDataException($"{_serversPath}: default '{defaultName}' is not one of the servers.");
+            var first = _servers.Count == 0;
+            _servers = servers;
+            _defaultServer = defaultServer;
+            ProxyServer.Log($"{(first ? "Servers" : "servers.properties reloaded")}: {string.Join(", ", servers.Select(s => $"{s.Name} ({s.Host}:{s.Port})"))}; default: {defaultServer.Name}.");
+        }
+        catch (Exception e) when (e is InvalidDataException or IOException && !throwOnError)
+        {
+            ProxyServer.Log($"{e.Message} The previous server list is kept.");
+        }
     }
 
     public BackendServer? Find(string name) =>

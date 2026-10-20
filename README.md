@@ -37,8 +37,22 @@ Si un serveur s'arrête ou plante, ses joueurs sont renvoyés sur `default-serve
 | `public-ip` | vide | IP annoncée aux joueurs (vide : trouvée par STUN dans Docker/Pterodactyl) |
 | `xbox-auth` | `on` | Vérifie les joueurs avec Xbox Live. **À laisser sur `on`.** |
 | `webrtc-ports` | `auto` | `auto` = tout le monde sur le port UDP de `server-port`, ou une plage `25600-25630` |
-| `servers` | `lobby=127.0.0.1:19133` | Serveurs derrière le proxy : `nom=ip:port`, séparés par des virgules |
-| `default-server` | `lobby` | Serveur rejoint à la connexion |
+
+## Les serveurs (`servers.properties`)
+
+Créé au premier démarrage. Un serveur par ligne. Les changements sont pris en compte **dès que le fichier est
+enregistré**, sans redémarrer le proxy :
+
+```properties
+# Serveur rejoint à la connexion
+default=lobby
+
+lobby=172.18.0.1:19135
+faction=172.18.0.1:19136
+```
+
+Si le fichier contient une erreur, le proxy l'indique dans la console et garde l'ancienne liste. Sur Pterodactyl,
+`127.0.0.1` désigne le conteneur du proxy : mets l'IP du nœud, ou `172.18.0.1`.
 
 ## Les serveurs Bedrokia derrière le proxy
 
@@ -55,8 +69,7 @@ Si un serveur s'arrête ou plante, ses joueurs sont renvoyés sur `default-serve
 1. Importe `deploy/pterodactyl/egg-bedrokia-proxy.json` (il est aussi joint à chaque release).
 2. Le dépôt est **privé** : remplis la variable **GitHub token** avec un token qui peut lire le dépôt. Un token
    fine-grained limité à `Nexiumpvp2/bedrokia-proxy` avec *Contents: Read-only* suffit.
-3. **Servers** : `lobby=IP:PORT,survie=IP:PORT`, avec l'IP et le port de chaque serveur Bedrokia tels qu'affichés
-   dans le panel.
+3. Après le premier démarrage, remplis `servers.properties` dans le gestionnaire de fichiers (voir plus haut).
 4. Donne au proxy le port public (19132) ; les serveurs Bedrokia gardent leurs propres ports.
 
 ## Développement
