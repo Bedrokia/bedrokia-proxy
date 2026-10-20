@@ -77,7 +77,9 @@ public static class NetherNetClient
         catch (Exception e) when (e is HttpRequestException or TimeoutException or TaskCanceledException or InvalidOperationException)
         {
             session.Disconnect("connection failed");
-            throw new IOException(e is TimeoutException ? "WebRTC connection timed out" : e.Message, e);
+            throw new IOException(e is TimeoutException
+                ? $"WebRTC connection to {remote} timed out (UDP blocked?)"
+                : $"{remote} does not answer on TCP: {e.Message}", e);
         }
         catch
         {
