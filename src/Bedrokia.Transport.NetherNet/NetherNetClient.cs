@@ -64,7 +64,9 @@ public static class NetherNetClient
             var result = peer.setRemoteDescription(new RTCSessionDescriptionInit
             {
                 type = RTCSdpType.answer,
-                sdp = SdpIdentity.WithoutIdentity(body),
+                // The server announces its public address; from a container next to it (Pterodactyl) only the
+                // address we reached it at may work: use that one for WebRTC too.
+                sdp = NetherNetListener.WithPublicAddress(SdpIdentity.WithoutIdentity(body), remote.Address),
             });
             if (result != SetDescriptionResultEnum.OK)
                 throw new IOException($"invalid answer from the server ({result})");
