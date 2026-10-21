@@ -21,7 +21,7 @@ namespace Bedrokia.Proxy;
 public sealed class PlayerSession
 {
     private const uint ChangeDimensionId = 61, SetDifficultyId = 60, StopSoundId = 87, SetTitleId = 88, AddPaintingId = 22,
-        RemoveObjectiveId = 106, SetDisplayObjectiveId = 107, ResourcePackDataInfoId = 82, AddActorId = 13, AddItemActorId = 15;
+        RemoveObjectiveId = 106, SetDisplayObjectiveId = 107, ResourcePackDataInfoId = 82, AvailableActorIdentifiersId = 119, AddActorId = 13, AddItemActorId = 15;
     private const int DimensionChangeDone = 14, CompressionThreshold = 256, MaxPacketsPerBatch = 64;
     private static readonly TimeSpan FakeDimensionWait = TimeSpan.FromMilliseconds(1500);
 
@@ -542,7 +542,7 @@ public sealed class PlayerSession
                             Reconnect(backend);
                     }
                     return null;
-                case ResourcePackDataInfoId or PacketId.NetworkSettings or PacketId.BiomeDefinitionList
+                case ResourcePackDataInfoId or PacketId.NetworkSettings or PacketId.BiomeDefinitionList or AvailableActorIdentifiersId
                     or PacketId.JigsawStructureData or PacketId.VoxelShapes:
                     return null; // sent once per connection: the client got them from the first server
             }
