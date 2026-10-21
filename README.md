@@ -56,6 +56,18 @@ faction=172.18.0.1:19136
 Si le fichier contient une erreur, le proxy l'indique dans la console et garde l'ancienne liste. Sur Pterodactyl,
 `127.0.0.1` désigne le conteneur du proxy : mets l'IP du nœud, ou `172.18.0.1`.
 
+## Les packs de ressources (`resource_packs/`)
+
+Mets les packs (`.zip`, `.mcpack` ou dossiers) dans `resource_packs/` **du proxy**. Les joueurs les téléchargent une
+fois en rejoignant le proxy, et ils servent sur tous les serveurs : les packs des serveurs ne sont plus envoyés.
+`force-resources=on` dans `proxy.properties` oblige à les accepter.
+
+Objets et blocs personnalisés : le jeu ne reçoit leur liste qu'une fois par connexion. Entre deux serveurs qui ont
+la même liste, le changement est instantané. Vers un serveur qui en a une autre (par exemple du lobby vers un faction
+avec ses plugins), le proxy fait reconnecter le jeu directement sur ce serveur : quelques secondes de chargement, et
+ses objets et blocs s'affichent. Il lui faut son adresse publique : `public-ip`, ou la détection automatique sous
+Docker et Pterodactyl.
+
 ## Les serveurs Bedrokia derrière le proxy
 
 1. **`xbox-auth=off`** dans leur `server.properties`. Le proxy vérifie déjà Xbox Live, puis transmet au serveur la

@@ -61,4 +61,26 @@ public class ProxyTests
             Directory.Delete(dir, recursive: true);
         }
     }
+
+    [Fact]
+    public void The_proxy_serves_its_resource_packs()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "proxy-packs-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(dir, "pack"));
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "pack", "manifest.json"),
+                """{"format_version":2,"header":{"name":"Test","uuid":"0db3592a-cdd6-c43f-6133-dde3fad30f1e","version":[1,2,1]},"modules":[{"type":"resources","uuid":"af715979-f448-b3a4-7157-dc2251878c62","version":[1,2,1]}]}""");
+            var packs = Bedrokia.Proxy.ResourcePacks.Load(dir);
+            var pack = Assert.Single(packs.All);
+            Assert.Equal("1.2.1", pack.Version);
+            Assert.Same(pack, packs.ById(pack.Id));
+            Assert.NotNull(Bedrokia.Proxy.ResourcePacks.ChunkPacket(pack, 0));
+            Assert.Null(Bedrokia.Proxy.ResourcePacks.ChunkPacket(pack, 1)); // a single chunk
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
 }

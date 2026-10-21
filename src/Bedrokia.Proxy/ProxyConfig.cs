@@ -18,6 +18,9 @@ public sealed class ProxyConfig
     public string PublicIp { get; private set; } = "";
     public string WebRtcPorts { get; private set; } = "auto";
 
+    /// <summary>Players must accept the proxy's resource packs to join.</summary>
+    public bool ForceResourcePacks { get; private set; }
+
     private readonly Lock _serversLock = new();
     private string _serversPath = "";
     private DateTime _serversStamp;
@@ -29,6 +32,7 @@ public sealed class ProxyConfig
         ("server-port", "19132", "Port players join on (TCP signaling; UDP on the same number with webrtc-ports=auto)"),
         ("public-ip", "", "Address announced to players (empty: found with STUN in Docker/Pterodactyl)"),
         ("webrtc-ports", "auto", "auto = every player on the UDP port of server-port, or first-last = one port per player"),
+        ("force-resources", "off", "on/off: players must accept the resource packs of resource_packs/ (downloaded once, used on every server)"),
     ];
 
     public IReadOnlyList<BackendServer> Servers
@@ -88,6 +92,7 @@ public sealed class ProxyConfig
         {
             PublicIp = values["public-ip"],
             WebRtcPorts = values["webrtc-ports"],
+            ForceResourcePacks = values["force-resources"].ToLowerInvariant() is "on" or "true" or "yes",
         };
         if (!int.TryParse(values["server-port"], out var port) || port is < 1 or > 65535)
             throw new InvalidDataException($"{path}: server-port must be a port number.");

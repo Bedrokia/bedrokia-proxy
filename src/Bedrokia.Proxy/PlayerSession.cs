@@ -29,7 +29,13 @@ public sealed class PlayerSession
     private readonly NetherNetSession _client;
     private readonly BatchCodec _codec = new(withHeader: false);
     private readonly Lock _sync = new();
-    private bool _closed, _loggedIn;
+    private bool _closed, _loggedIn, _packsPhase;
+    private string _xuid = "";
+    private BackendServer? _loginTarget;
+
+    // What the client got as custom content (the first server's item list, its custom blocks with it): a server with
+    // another list is reached by reconnecting to the proxy, the client cannot take a second list.
+    private string? _clientContent;
     private byte[]? _login, _chunkRadius;
     private long _clientSelf = -1;
     private int _clientDimension;
@@ -65,6 +71,7 @@ public sealed class PlayerSession
         public bool NetworkReady, Initialised, Kicked, ShutDown;
         public long Self = -1;
         public StartInfo? Start;
+        public byte[]? PendingStart; // a server switched to: its StartGame, kept until its item list is compared
 
         /// <summary>Packets for the client, held while the client changes dimension; null once switched.</summary>
         public List<byte[]>? Buffer;
@@ -162,6 +169,14 @@ public sealed class PlayerSession
                             return;
                         continue;
                     }
+                    if (_packsPhase)
+                    {
+                        OnPackPacket(packet);
+                        changed = true;
+                        if (_closed)
+                            return;
+                        continue;
+                    }
                     var id = PacketIdOf(packet);
                     if (id == PacketId.RequestChunkRadius)
                         _chunkRadius = packet;
@@ -237,10 +252,64 @@ public sealed class PlayerSession
             throw new LoginException("An Xbox Live identity is required to join this server.");
 
         Name = identity.Name;
+        _xuid = identity.Xuid;
         _login = packet;
         _loggedIn = true;
-        ProxyServer.Log($"{Name} ({(identity.Authenticated ? "xuid " + identity.Xuid : "not authenticated")}) joined from {_client.RemoteEndPoint}, sent to {_proxy.Config.DefaultServer.Name}.");
-        Connect(_proxy.Config.DefaultServer, first: true);
+        // Back for the content of another server (see Reconnect): straight to it; otherwise the default server.
+        _loginTarget = _proxy.TakeRoute(_xuid) ?? _proxy.Config.DefaultServer;
+        ProxyServer.Log($"{Name} ({(identity.Authenticated ? "xuid " + identity.Xuid : "not authenticated")}) joined from {_client.RemoteEndPoint}, sent to {_loginTarget.Name}.");
+        // The proxy's resource packs first (downloaded once, the same on every server), then the server.
+        _packsPhase = true;
+        SendToClient(Packets.PlayStatus(PlayStatus.LoginSuccess), _proxy.Packs.InfoPacket(_proxy.Config.ForceResourcePacks));
+    }
+
+    // ResourcePackClientResponse: 0 refused, 1 send packs, 2 all downloaded, 3 completed; then the chunk requests.
+    private void OnPackPacket(byte[] packet)
+    {
+        var reader = new BedrockReader(packet);
+        var id = reader.VarUInt32() & 0x3FF;
+        var packs = _proxy.Packs;
+        var required = _proxy.Config.ForceResourcePacks;
+        if (id == ResourcePacks.ChunkRequestId)
+        {
+            var packId = reader.String();
+            var index = BinaryPrimitives.ReadInt32LittleEndian(reader.Bytes(4));
+            if (packs.ById(packId) is { } pack && ResourcePacks.ChunkPacket(pack, index) is { } chunk)
+                SendToClient(chunk);
+            return;
+        }
+        if (id != PacketId.ResourcePackClientResponse)
+            return; // client cache status and the like: nothing the server needs before it starts
+        var response = reader.VarUInt32();
+        if (reader.Remaining > 0)
+            reader.String();
+        switch (response)
+        {
+            case 0 when required && packs.All.Count > 0:
+                Kick("Ce serveur demande ses packs de ressources.");
+                return;
+            case 1:
+            {
+                var count = reader.Remaining > 0 ? reader.VarUInt32() : 0;
+                var sent = 0;
+                for (var i = 0; i < count; i++)
+                    if (packs.ById(reader.String()) is { } pack)
+                    {
+                        SendToClient(ResourcePacks.DataInfoPacket(pack));
+                        sent++;
+                    }
+                if (sent == 0)
+                    SendToClient(packs.StackPacket(required));
+                return;
+            }
+            case 3: // completed: the server now, which never sends its own packs to the client
+                _packsPhase = false;
+                Connect(_loginTarget ?? _proxy.Config.DefaultServer, first: true);
+                return;
+            default: // refused (not required) or all downloaded
+                SendToClient(packs.StackPacket(required));
+                return;
+        }
     }
 
     // --- Server connections ---
@@ -411,11 +480,29 @@ public sealed class PlayerSession
 
         if (backend.First)
         {
-            if (id == PacketId.StartGame)
+            switch (id)
             {
-                var start = ReadStartGame(packet, out var runtimeId);
-                backend.Self = _clientSelf = runtimeId;
-                _clientDimension = start.Dimension;
+                case PacketId.StartGame:
+                {
+                    var start = ReadStartGame(packet, out var runtimeId);
+                    backend.Self = _clientSelf = runtimeId;
+                    _clientDimension = start.Dimension;
+                    break;
+                }
+                case PacketId.ItemRegistry:
+                    _clientContent = ContentOf(packet);
+                    break;
+                // The client already went through the proxy's packs and login success: the server's are answered here.
+                case PacketId.PlayStatus when BinaryPrimitives.ReadInt32BigEndian(reader.Bytes(4)) == PlayStatus.LoginSuccess:
+                    return null;
+                case PacketId.ResourcePacksInfo:
+                    backend.Send(ResourcePackResponse(2));
+                    return null;
+                case PacketId.ResourcePackStack:
+                    backend.Send(ResourcePackResponse(3));
+                    return null;
+                case ResourcePackDataInfoId:
+                    return null;
             }
         }
         else
@@ -442,9 +529,20 @@ public sealed class PlayerSession
                     return null;
                 case PacketId.StartGame:
                     if (backend == _pending)
-                        BeginSwitch(backend, packet);
+                        backend.PendingStart = packet; // its item list comes right after: compared first
                     return null;
-                case ResourcePackDataInfoId or PacketId.NetworkSettings or PacketId.ItemRegistry or PacketId.BiomeDefinitionList
+                case PacketId.ItemRegistry:
+                    // Same items and blocks as the client has: an instant switch. Others: the client must reconnect
+                    // (it takes one list per connection), straight to that server, packs already downloaded.
+                    if (backend == _pending && backend.PendingStart is { } startGame)
+                    {
+                        if (_clientContent is null || _clientContent == ContentOf(packet) || _proxy.PublicHost is null)
+                            BeginSwitch(backend, startGame);
+                        else
+                            Reconnect(backend);
+                    }
+                    return null;
+                case ResourcePackDataInfoId or PacketId.NetworkSettings or PacketId.BiomeDefinitionList
                     or PacketId.JigsawStructureData or PacketId.VoxelShapes:
                     return null; // sent once per connection: the client got them from the first server
             }
@@ -467,6 +565,19 @@ public sealed class PlayerSession
         var rewritten = EntityIds.Swap(packet, backend.Self, _clientSelf);
         Track(rewritten, id);
         return rewritten;
+    }
+
+    private static string ContentOf(byte[] itemRegistry) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(itemRegistry));
+
+    // The next server has other custom items or blocks: the client reconnects to the proxy, which sends it there.
+    private void Reconnect(Backend backend)
+    {
+        _pending = null;
+        backend.Session?.Disconnect("player reconnecting for this server's content");
+        _proxy.RouteNextLogin(_xuid, backend.Server);
+        ProxyServer.Log($"{Name}: {backend.Server.Name} has other items and blocks than {_current?.Server.Name}: reconnecting the client to it.");
+        Message($"§7Chargement de §f{backend.Server.Name}§7...");
+        SendToClient(Packets.Transfer(_proxy.PublicHost!, (ushort)_proxy.Config.Port));
     }
 
     private static byte[] ResourcePackResponse(byte response) =>

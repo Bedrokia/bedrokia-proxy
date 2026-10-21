@@ -28,6 +28,20 @@ public sealed class ProxyServer(ProxyConfig config)
 
     public IEnumerable<PlayerSession> Players => _players.Keys;
 
+    /// <summary>The proxy's resource packs (resource_packs/), sent to players when they join.</summary>
+    public ResourcePacks Packs { get; } = ResourcePacks.Load("resource_packs");
+
+    /// <summary>The address players reach the proxy on (public-ip, or found with STUN); null when unknown.</summary>
+    public string? PublicHost { get; private set; }
+
+    // Players reconnecting to the proxy for the content of another server: their xuid → that server, for a minute.
+    private readonly ConcurrentDictionary<string, (BackendServer Server, DateTime Until)> _routes = new();
+
+    public void RouteNextLogin(string xuid, BackendServer server) => _routes[xuid] = (server, DateTime.UtcNow.AddMinutes(1));
+
+    public BackendServer? TakeRoute(string xuid) =>
+        _routes.TryRemove(xuid, out var route) && route.Until > DateTime.UtcNow && Config.Find(route.Server.Name) is { } server ? server : null;
+
     public static void Log(string message) => Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] {message}");
 
     public async Task RunAsync(CancellationToken stop)
@@ -42,6 +56,7 @@ public sealed class ProxyServer(ProxyConfig config)
             // Pterodactyl gives 0.0.0.0 for an allocation on every address: not one players can reach.
             PublicAddress = IPAddress.TryParse(Config.PublicIp, out var ip) && !ip.Equals(IPAddress.Any) ? ip : DetectPublicIp(),
         };
+        PublicHost = listener.PublicAddress?.ToString();
         listener.SessionOpened += session =>
         {
             var player = new PlayerSession(this, session);
