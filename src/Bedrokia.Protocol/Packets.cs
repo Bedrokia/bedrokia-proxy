@@ -98,8 +98,8 @@ public static class PacketId
 public static class ProtocolInfo
 {
     /// <summary>Not validated against a real client yet (see docs/ROADMAP.md).</summary>
-    public const int Version = 2193;
-    public const string GameVersion = "1.26.50";
+    public const int Version = 2225;
+    public const string GameVersion = "1.26.60";
 }
 
 public static class PlayStatus
@@ -218,6 +218,7 @@ public static class Packets
         .Bool(false) // blob cache disabled
         .VarUInt32(0) // blob hashes
         .ByteArray(payload)
+        .Bool(false) // client biome update (1.26.60)
         .ToArray();
 
     public static byte[] SetPlayerGameType(int gameMode) => Begin(PacketId.SetPlayerGameType).VarInt32(gameMode).ToArray();
@@ -342,6 +343,7 @@ public static class Packets
             .BlockPos(d.SpawnX, d.SpawnY, d.SpawnZ)
             .Bool(true) // achievements disabled
             .VarInt32(0).Bool(false).Bool(false) // editor world type, created in / exported from editor
+            .Byte(0) // editor level migration version: legacy (1.26.60)
             .VarInt32(0) // day cycle lock time
             .VarUInt32(0).Bool(false).String("") // education offer, features, product id
             .Float32(0).Float32(0) // rain, lightning

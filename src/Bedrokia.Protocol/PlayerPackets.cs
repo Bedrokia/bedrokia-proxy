@@ -102,6 +102,7 @@ public static class PlayerPackets
                 .VarInt64(p.EntityId)
                 .String(p.Name)
                 .String(p.Xuid)
+                .String("") // PlayFab id (1.26.60)
                 .String("") // platform chat id
                 .Int32(p.BuildPlatform)
                 .Bytes(p.Skin)
@@ -131,6 +132,7 @@ public static class PlayerPackets
             .VarUInt32(0).VarUInt32(0) // entity properties (int, float)
             .Int64(p.EntityId).Byte(1).Byte(0).VarUInt32(0) // abilities: member, normal commands, no layers
             .VarUInt32(0) // entity links
+            .Bool(false) // passenger of block (1.26.60)
             .String("") // device id
             .Int32(p.BuildPlatform)
             .ToArray();
@@ -155,7 +157,7 @@ public static class PlayerPackets
             var skin = B64("SkinData");
             Check(width, height, skin);
 
-            w.String(Str("SkinId")).String(Str("PlayFabId")).ByteArray(B64("SkinResourcePatch"))
+            w.String(Str("SkinId")).ByteArray(B64("SkinResourcePatch"))
                 .UInt32(width).UInt32(height).ByteArray(skin);
 
             var animations = clientData.TryGetProperty("AnimatedImageData", out var a) && a.ValueKind == JsonValueKind.Array
