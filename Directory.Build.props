@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- Version of Bedrokia Proxy (SemVer). -->
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
     <Authors>Bedrokia contributors</Authors>
     <Product>Bedrokia Proxy</Product>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>

@@ -165,6 +165,9 @@ public sealed class ProxyConfig
     /// </summary>
     public BackendServer? FindTransferTarget(string address, int port) =>
         Find(address)
+        // "faction" for "factions": a name only one server starts with (a typo in a plugin config)
+        ?? (address.Length > 0 && Servers.Count(s => s.Name.StartsWith(address, StringComparison.OrdinalIgnoreCase)) == 1
+            ? Servers.First(s => s.Name.StartsWith(address, StringComparison.OrdinalIgnoreCase)) : null)
         ?? Servers.FirstOrDefault(s => s.Port == port && s.Host.Equals(address, StringComparison.OrdinalIgnoreCase))
         ?? (Servers.Count(s => s.Port == port) == 1 ? Servers.First(s => s.Port == port) : null);
 

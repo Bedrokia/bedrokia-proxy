@@ -559,6 +559,7 @@ public sealed class PlayerSession
                 RequestSwitch(target);
                 return null;
             }
+            ProxyServer.Log($"{Name}: transfer to {address}:{BinaryPrimitives.ReadUInt16LittleEndian(port)}, not a server of the proxy: the client leaves it.");
             return packet; // a server outside the proxy: the client really leaves
         }
 

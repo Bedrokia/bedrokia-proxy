@@ -41,6 +41,7 @@ public class ProxyTests
             File.WriteAllText(path, "servers=lobby=127.0.0.1:19133, survie=127.0.0.1:19134\ndefault-server=lobby\n");
             var config = ProxyConfig.Load(path);
             Assert.Equal("survie", config.FindTransferTarget("SURVIE", 0)?.Name);
+            Assert.Equal("survie", config.FindTransferTarget("surv", 0)?.Name); // a name only one server starts with
             Assert.Equal("survie", config.FindTransferTarget("play.example.com", 19134)?.Name); // public address, same port
             Assert.Null(config.FindTransferTarget("other.example.com", 19132));
             Assert.Equal("lobby", config.DefaultServer.Name);
