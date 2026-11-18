@@ -22,7 +22,8 @@ public sealed record ResourcePack(Guid Uuid, string Version, string Name, byte[]
 public sealed class ResourcePacks
 {
     public const uint DataInfoId = 82, ChunkDataId = 83, ChunkRequestId = 84;
-    private const int ChunkSize = 128 * 1024;
+    // A client asks for one chunk at a time: bigger chunks, fewer round trips.
+    private const int ChunkSize = 512 * 1024;
 
     public IReadOnlyList<ResourcePack> All { get; }
 
